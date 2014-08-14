@@ -21,46 +21,44 @@ package com.odoo.base.account;
 import java.util.ArrayList;
 import java.util.List;
 
+import odoo.controls.OList;
+import odoo.controls.OList.BeforeListRowCreateListener;
+import odoo.controls.OList.OnListRowViewClickListener;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.GridView;
-import android.widget.ImageView;
-import android.widget.TextView;
 
 import com.odoo.R;
-import com.odoo.auth.OpenERPAccountManager;
-import com.odoo.orm.OEDataRow;
+import com.odoo.auth.OdooAccountManager;
+import com.odoo.base.login_signup.LoginSignup;
+import com.odoo.orm.ODataRow;
 import com.odoo.support.AppScope;
-import com.odoo.support.BaseFragment;
-import com.odoo.support.OEUser;
-import com.odoo.support.fragment.FragmentListener;
-import com.odoo.support.listview.OEListAdapter;
-import com.odoo.util.Base64Helper;
+import com.odoo.support.OUser;
+import com.odoo.support.fragment.BaseFragment;
+import com.odoo.util.OControls;
 import com.odoo.util.drawer.DrawerItem;
 
-public class AccountsDetail extends BaseFragment {
-	View rootView = null;
-	GridView gridAccounts = null;
-	OEListAdapter mAdapter = null;
-	List<Object> mAccounts = new ArrayList<Object>();
+public class AccountsDetail extends BaseFragment implements
+		BeforeListRowCreateListener, OnListRowViewClickListener {
+	private View rootView = null;
+	private OList gridAccounts = null;
+	private List<ODataRow> mAccounts = new ArrayList<ODataRow>();
 
 	@Override
 	public View onCreateView(LayoutInflater inflater, ViewGroup container,
 			Bundle savedInstanceState) {
 		setHasOptionsMenu(true);
-		rootView = inflater.inflate(R.layout.fragment_all_accounts_detail,
-				container, false);
+		rootView = inflater.inflate(R.layout.base_account_list, container,
+				false);
 		scope = new AppScope(this);
 		scope.main().setTitle(R.string.title_accounts);
 		setupGrid();
@@ -68,82 +66,22 @@ public class AccountsDetail extends BaseFragment {
 	}
 
 	private void setupGrid() {
-		gridAccounts = (GridView) rootView.findViewById(R.id.gridAccounts);
-		mAccounts = new ArrayList<Object>(getAccounts());
-		mAdapter = new OEListAdapter(getActivity(),
-				R.layout.fragment_account_detail_item, mAccounts) {
-			@Override
-			public View getView(int position, View convertView, ViewGroup parent) {
-				View mView = convertView;
-				if (mView == null) {
-					mView = getActivity().getLayoutInflater().inflate(
-							getResource(), parent, false);
-				}
-				TextView txvName, txvHost;
-				txvName = (TextView) mView.findViewById(R.id.txvAccountName);
-				txvHost = (TextView) mView.findViewById(R.id.txvAccountHost);
-				ImageView imgUserPic = (ImageView) mView
-						.findViewById(R.id.imgAccountPic);
-
-				final OEDataRow row_data = (OEDataRow) mAccounts.get(position);
-				txvName.setText(row_data.getString("name"));
-				txvHost.setText(row_data.getString("host"));
-				if (!row_data.getString("image").equals("false"))
-					imgUserPic.setImageBitmap(Base64Helper.getBitmapImage(
-							getActivity(), row_data.getString("image")));
-				Button btnLogin = (Button) mView.findViewById(R.id.btnLogin);
-				Button btnLogout = (Button) mView.findViewById(R.id.btnLogout);
-				Button btnDelete = (Button) mView.findViewById(R.id.btnDelete);
-				btnDelete.setOnClickListener(new OnClickListener() {
-
-					@Override
-					public void onClick(View v) {
-						String accountName = row_data.getString("name")
-								.toString();
-						Dialog deleteAccount = deleteAccount(accountName);
-						deleteAccount.show();
-
-					}
-				});
-				if (row_data.getBoolean("is_active")) {
-					btnLogout.setVisibility(View.VISIBLE);
-					btnLogin.setVisibility(View.GONE);
-					btnLogout.setOnClickListener(new OnClickListener() {
-
-						@Override
-						public void onClick(View view) {
-							Dialog logoutConfirm = logoutConfirmDialog();
-							logoutConfirm.show();
-						}
-					});
-				} else {
-					btnLogout.setVisibility(View.GONE);
-					btnLogin.setVisibility(View.VISIBLE);
-					btnLogin.setOnClickListener(new OnClickListener() {
-
-						@Override
-						public void onClick(View view) {
-							OpenERPAccountManager.loginUser(scope.context(),
-									row_data.getString("name"));
-							scope.main().finish();
-							scope.main()
-									.startActivity(scope.main().getIntent());
-						}
-					});
-				}
-				return mView;
-			}
-		};
-		gridAccounts.setAdapter(mAdapter);
+		gridAccounts = (OList) rootView.findViewById(R.id.gridAccounts);
+		mAccounts.clear();
+		mAccounts.addAll(getAccounts());
+		gridAccounts.setBeforeListRowCreateListener(this);
+		gridAccounts.setOnListRowViewClickListener(R.id.btnLogin, this);
+		gridAccounts.setOnListRowViewClickListener(R.id.btnLogout, this);
+		gridAccounts.setOnListRowViewClickListener(R.id.btnDelete, this);
+		gridAccounts.initListControl(mAccounts);
 
 	}
 
-	private List<Object> getAccounts() {
-		List<Object> list = new ArrayList<Object>();
-		for (OEUser account : OpenERPAccountManager.fetchAllAccounts(scope
+	private List<ODataRow> getAccounts() {
+		List<ODataRow> list = new ArrayList<ODataRow>();
+		for (OUser account : OdooAccountManager.fetchAllAccounts(scope
 				.context())) {
-			OEDataRow row_data = new OEDataRow();
-
+			ODataRow row_data = new ODataRow();
 			row_data.put("name", account.getAndroidName());
 			row_data.put("image", account.getAvatar());
 			row_data.put("host", account.getHost());
@@ -162,9 +100,8 @@ public class AccountsDetail extends BaseFragment {
 	public boolean onOptionsItemSelected(MenuItem item) {
 		switch (item.getItemId()) {
 		case R.id.menu_add_new_account:
-			AccountFragment fragment = new AccountFragment();
-			FragmentListener mFragment = (FragmentListener) getActivity();
-			mFragment.startMainFragment(fragment, true);
+			LoginSignup loginSignUp = new LoginSignup();
+			startFragment(loginSignUp, true);
 			return true;
 		default:
 			return super.onOptionsItemSelected(item);
@@ -189,9 +126,8 @@ public class AccountsDetail extends BaseFragment {
 								// User clicked OK, so save the result somewhere
 								// or return them to the component that opened
 								// the dialog
-								OpenERPAccountManager.logoutUser(scope
-										.context(), scope.User()
-										.getAndroidName());
+								OdooAccountManager.logoutUser(scope.context(),
+										scope.User().getAndroidName());
 								scope.main().finish();
 							}
 						}).setNegativeButton(R.string.label_cancel, null);
@@ -217,11 +153,17 @@ public class AccountsDetail extends BaseFragment {
 								// User clicked OK, so save the result somewhere
 								// or return them to the component that opened
 								// the dialog
-								OpenERPAccountManager.removeAccount(
+								OdooAccountManager.removeAccount(
 										scope.context(), accountName);
-								scope.main().finish();
-								scope.main().startActivity(
-										scope.main().getIntent());
+								new Handler().postDelayed(new Runnable() {
+
+									@Override
+									public void run() {
+										scope.main().finish();
+										scope.main().startActivity(
+												scope.main().getIntent());
+									}
+								}, 1000);
 							}
 						}).setNegativeButton(R.string.label_cancel, null);
 
@@ -236,5 +178,46 @@ public class AccountsDetail extends BaseFragment {
 	@Override
 	public List<DrawerItem> drawerMenus(Context context) {
 		return null;
+	}
+
+	@Override
+	public void beforeListRowCreate(int position, ODataRow row, View view) {
+		OControls.toggleViewVisibility(view, R.id.btnLogin,
+				!row.getBoolean("is_active"));
+		OControls.toggleViewVisibility(view, R.id.btnLogout,
+				row.getBoolean("is_active"));
+	}
+
+	@Override
+	public void onRowViewClick(ViewGroup view_group, View view, int position,
+			ODataRow row) {
+		switch (view.getId()) {
+		case R.id.btnDelete:
+			String accountName = row.getString("name").toString();
+			Dialog deleteAccount = deleteAccount(accountName);
+			deleteAccount.show();
+			break;
+		case R.id.btnLogin:
+			OdooAccountManager
+					.loginUser(scope.context(), row.getString("name"));
+			scope.main().finish();
+			scope.main().startActivity(scope.main().getIntent());
+			break;
+		case R.id.btnLogout:
+			Dialog logoutConfirm = logoutConfirmDialog();
+			logoutConfirm.show();
+			break;
+		default:
+			break;
+		}
+
+	}
+
+	@Override
+	public void onResume() {
+		super.onResume();
+		getActivity().setTitle("Accounts");
+		getActivity().getActionBar().show();
+		scope.main().lockDrawer(false);
 	}
 }

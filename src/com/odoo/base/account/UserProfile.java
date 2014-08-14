@@ -20,12 +20,15 @@ package com.odoo.base.account;
 
 import java.util.List;
 
+import odoo.OdooInstance;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.text.method.PasswordTransformationMethod;
 import android.view.LayoutInflater;
@@ -35,25 +38,21 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import com.odoo.R;
-import com.odoo.auth.OpenERPAccountManager;
-import com.odoo.orm.OEHelper;
+import com.odoo.auth.OdooAccountManager;
+import com.odoo.orm.OdooHelper;
 import com.odoo.support.AppScope;
-import com.odoo.support.BaseFragment;
-import com.odoo.support.OEUser;
+import com.odoo.support.OUser;
+import com.odoo.support.fragment.BaseFragment;
 import com.odoo.util.Base64Helper;
+import com.odoo.util.OControls;
 import com.odoo.util.drawer.DrawerItem;
 
 public class UserProfile extends BaseFragment {
 	View rootView = null;
 	EditText password = null;
-	TextView txvUserLoginName, txvUsername, txvServerUrl, txvTimeZone,
-			txvDatabase;
-	ImageView imgUserPic;
 	AlertDialog.Builder builder = null;
 	Dialog dialog = null;
 
@@ -61,38 +60,39 @@ public class UserProfile extends BaseFragment {
 	public View onCreateView(LayoutInflater inflater, ViewGroup container,
 			Bundle savedInstanceState) {
 		setHasOptionsMenu(true);
-		rootView = inflater.inflate(R.layout.fragment_account_user_profile,
+		rootView = inflater.inflate(R.layout.base_account_user_profile,
 				container, false);
 		scope = new AppScope(this);
 		scope.main().setTitle(R.string.title_user_profile);
-
 		setupView();
 		return rootView;
 	}
 
 	private void setupView() {
-
-		imgUserPic = null;
-		imgUserPic = (ImageView) rootView.findViewById(R.id.imgUserProfilePic);
+		Bitmap userPic = null;
 		if (!scope.User().getAvatar().equals("false"))
-			imgUserPic.setImageBitmap(Base64Helper.getBitmapImage(
-					scope.context(), scope.User().getAvatar()));
-		txvUserLoginName = (TextView) rootView
-				.findViewById(R.id.txvUserLoginName);
-		txvUserLoginName.setText(scope.User().getAndroidName());
-
-		txvUsername = (TextView) rootView.findViewById(R.id.txvUserName);
-		txvUsername.setText(scope.User().getUsername());
-
-		txvServerUrl = (TextView) rootView.findViewById(R.id.txvServerUrl);
-		txvServerUrl.setText(scope.User().getHost());
-
-		txvDatabase = (TextView) rootView.findViewById(R.id.txvDatabase);
-		txvDatabase.setText(scope.User().getDatabase());
-
-		txvTimeZone = (TextView) rootView.findViewById(R.id.txvTimeZone);
+			userPic = Base64Helper.getRoundedCornerBitmap(getActivity(),
+					Base64Helper.getBitmapImage(scope.context(), scope.User()
+							.getAvatar()), true);
+		else
+			userPic = Base64Helper.getRoundedCornerBitmap(getActivity(),
+					BitmapFactory.decodeResource(getActivity().getResources(),
+							R.drawable.avatar), true);
+		OControls.setImage(rootView, R.id.imgUserProfilePic, userPic);
+		OControls.setText(rootView, R.id.userFullName, scope.User().getName());
+		OControls.setText(rootView, R.id.txvUserName, scope.User()
+				.getUsername());
+		OControls.setText(rootView, R.id.txvServerUrl, (scope.User()
+				.isOAauthLogin()) ? scope.User().getInstanceUrl() : scope
+				.User().getHost());
+		OControls.setText(rootView, R.id.txvDatabase, (scope.User()
+				.isOAauthLogin()) ? scope.User().getInstanceDatabase() : scope
+				.User().getDatabase());
 		String timezone = scope.User().getTimezone();
-		txvTimeZone.setText((timezone.equals("false")) ? "GMT" : timezone);
+		OControls.setText(rootView, R.id.txvTimeZone,
+				(timezone.equals("false")) ? "GMT" : timezone);
+		OControls.setText(rootView, R.id.txvOdooVersion, scope.User()
+				.getVersion_serie());
 
 	}
 
@@ -124,18 +124,34 @@ public class UserProfile extends BaseFragment {
 		builder.setPositiveButton(R.string.label_update_info,
 				new OnClickListener() {
 					public void onClick(DialogInterface di, int i) {
-						OEUser userData = null;
+						OUser userData = null;
 						try {
-							OEHelper openerp = new OEHelper(scope.context());
-							userData = openerp.login(
-									scope.User().getUsername(), password
-											.getText().toString(), scope.User()
-											.getDatabase(), scope.User()
-											.getHost());
+							OdooHelper odoo = null;
+							if (scope.User().isOAauthLogin()) {
+								odoo = new OdooHelper(getActivity());
+								OdooInstance instance = new OdooInstance();
+								instance.setInstanceUrl(scope.User()
+										.getInstanceUrl());
+								instance.setDatabaseName(scope.User()
+										.getInstanceDatabase());
+								instance.setClientId(scope.User().getClientId());
+								userData = odoo.instance_login(instance, scope
+										.User().getUsername(), password
+										.getText().toString());
+							} else {
+								odoo = new OdooHelper(getActivity(), scope
+										.User().isAllowSelfSignedSSL());
+								userData = odoo.login(scope.User()
+										.getUsername(), password.getText()
+										.toString(),
+										scope.User().getDatabase(), scope
+												.User().getHost());
+							}
 						} catch (Exception e) {
+							e.printStackTrace();
 						}
 						if (userData != null) {
-							if (OpenERPAccountManager.updateAccountDetails(
+							if (OdooAccountManager.updateAccountDetails(
 									scope.context(), userData)) {
 								Toast.makeText(getActivity(),
 										"Infomation Updated.",

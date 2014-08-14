@@ -18,7 +18,7 @@
  */
 package com.odoo.base.res.services;
 
-import openerp.OEDomain;
+import odoo.ODomain;
 import android.accounts.Account;
 import android.app.Service;
 import android.content.AbstractThreadedSyncAdapter;
@@ -32,15 +32,15 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
-import com.odoo.auth.OpenERPAccountManager;
-import com.odoo.base.res.ResPartnerDB;
-import com.odoo.orm.OEHelper;
-import com.odoo.support.OEUser;
-import com.odoo.support.contact.OEContact;
+import com.odoo.auth.OdooAccountManager;
+import com.odoo.base.res.ResPartner;
+import com.odoo.orm.OSyncHelper;
+import com.odoo.support.OUser;
+import com.odoo.support.contact.OContact;
 
 public class ContactSyncService extends Service {
 
-	public static final String TAG = "com.openerp.base.res.services.ContactSyncService";
+	public static final String TAG = "com.odoo.base.res.services.ContactSyncService";
 
 	private static SyncAdapterImpl sSyncAdapter = null;
 	Context mContext = null;
@@ -67,25 +67,25 @@ public class ContactSyncService extends Service {
 			String authority, ContentProviderClient provider,
 			SyncResult syncResult) {
 		try {
-			OEUser user = OpenERPAccountManager.getAccountDetail(context,
+			OUser user = OdooAccountManager.getAccountDetail(context,
 					account.name);
 
-			ResPartnerDB db = new ResPartnerDB(context);
-			OEHelper oe = db.getOEInstance();
+			ResPartner db = new ResPartner(context);
+			OSyncHelper odoo = db.getSyncHelper();
 
-			OEContact contact = new OEContact(context, user);
+			OContact contact = new OContact(context, user);
 
 			SharedPreferences settings = PreferenceManager
 					.getDefaultSharedPreferences(context);
 			boolean syncServerContacts = settings.getBoolean(
 					"server_contact_sync", false);
 
-			if (syncServerContacts && oe != null) {
+			if (syncServerContacts && odoo != null) {
 				Log.v(TAG, "Contact sync with server");
 				int company_id = Integer.parseInt(user.getCompany_id());
-				OEDomain domain = new OEDomain();
+				ODomain domain = new ODomain();
 				domain.add("company_id", "=", company_id);
-				oe.syncWithServer(domain, false);
+				odoo.syncWithServer(domain);
 			}
 			contact.createContacts(db.select());
 		} catch (Exception e) {

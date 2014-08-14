@@ -18,44 +18,104 @@
  */
 package com.odoo;
 
-import openerp.OpenERP;
+import odoo.OVersionException;
+import odoo.Odoo;
+import odoo.OdooInstance;
+import odoo.OdooVersion;
 import android.app.Application;
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.util.Log;
 
-import com.odoo.auth.OpenERPAccountManager;
-import com.odoo.support.OEUser;
+import com.odoo.support.OUser;
 
 public class App extends Application {
 
-	public static final String TAG = App.class.getSimpleName();
-	public static OpenERP mOEInstance = null;
+	private static final String TAG = App.class.getSimpleName();
+	private static Odoo mOdooInstance = null;
+	private static OUser mUser = null;
+	private static OUser mSyncUser = null;
 
 	@Override
 	public void onCreate() {
 		Log.d(TAG, "App->onCreate()");
 		super.onCreate();
-		OEUser user = OEUser.current(getApplicationContext());
+	}
+
+	public void setSyncUser(OUser user) {
+		mSyncUser = user;
+	}
+
+	public OUser getSyncUser() {
+		return mSyncUser;
+	}
+
+	public void setUser(OUser user) {
+		mUser = user;
+	}
+
+	public OUser getUser() {
+		return mUser;
+	}
+
+	public OdooVersion getOdooVersion() {
+		if (mOdooInstance != null)
+			try {
+				return mOdooInstance.getOdooVersion();
+			} catch (OVersionException e) {
+				e.printStackTrace();
+			}
+		return null;
+	}
+
+	public Odoo createInstance() {
+		Odoo odoo = null;
+		OUser user = OUser.current(getApplicationContext());
 		if (user != null) {
 			try {
-				mOEInstance = new OpenERP(user.getHost(),
-						user.isAllowSelfSignedSSL());
-				mOEInstance.authenticate(user.getUsername(),
-						user.getPassword(), user.getDatabase());
+				if (user.isOAauthLogin()) {
+					odoo = new Odoo(user.getInstanceUrl(),
+							user.isAllowSelfSignedSSL());
+					OdooInstance instance = new OdooInstance();
+					instance.setInstanceUrl(user.getInstanceUrl());
+					instance.setDatabaseName(user.getInstanceDatabase());
+					instance.setClientId(user.getClientId());
+					odoo.oauth_authenticate(instance, user.getUsername(),
+							user.getPassword());
+				} else {
+					odoo = new Odoo(user.getHost(), user.isAllowSelfSignedSSL());
+					odoo.authenticate(user.getUsername(), user.getPassword(),
+							user.getDatabase());
+				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
 		}
-		if (!OpenERPAccountManager.isAnyUser(getApplicationContext())) {
-			mOEInstance = null;
+		setOdooInstance(odoo);
+		return odoo;
+	}
+
+	public Odoo getOdoo() {
+		Log.d(TAG, "App->getOdooInstance()");
+		if (mOdooInstance == null && inNetwork()) {
+			mOdooInstance = createInstance();
 		}
+		return mOdooInstance;
 	}
 
-	public OpenERP getOEInstance() {
-		Log.d(TAG, "App->getOEInstance()");
-		return mOEInstance;
+	public void setOdooInstance(Odoo odoo) {
+		Log.d(TAG, "App->setOdooInstance()");
+		mOdooInstance = odoo;
 	}
 
-	public void setOEInstance(OpenERP openERP) {
-		mOEInstance = openERP;
+	public boolean inNetwork() {
+		boolean isConnected = false;
+		ConnectivityManager conManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+		NetworkInfo nInfo = conManager.getActiveNetworkInfo();
+		if (nInfo != null && nInfo.isConnectedOrConnecting()) {
+			isConnected = true;
+		}
+		return isConnected;
 	}
 }

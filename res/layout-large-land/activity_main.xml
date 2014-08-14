@@ -17,7 +17,8 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="0.8"
-            android:background="#ffffff" />
+            android:background="#ffffff" >
+        </FrameLayout>
 
         <FrameLayout
             android:id="@+id/fragment_detail_container"
